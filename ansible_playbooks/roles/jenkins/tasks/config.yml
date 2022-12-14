@@ -1,0 +1,58 @@
+---
+- name: Create custom init scripts directory.
+  file:
+    path: "{{ jenkins_home }}/init.groovy.d"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: 0775
+
+- name: Create initial user
+  template:
+    src: initial-user.groovy.j2
+    dest: "{{ jenkins_home }}/init.groovy.d/initial-user.groovy"
+    owner: jenkins
+    group: jenkins
+    mode: 0755
+  register: jenkins_user_config
+
+
+- name: Check for init folder
+  stat: 
+    path: "{{ jenkins_init_folder }}"
+  register: jenkins_init_folder_status
+  
+- name: "configure : check if '{{ jenkins_casc_config_path }}' exists."
+  ansible.builtin.stat:
+    path: "{{ jenkins_casc_config_path }}"
+  register: jenkins_casc_config_path_result
+
+- name: "Fail when '{{ jenkins_casc_config_path }}' does not exist."
+  ansible.builtin.fail:
+    msg: >-
+      No file or directory found with path '{{ jenkins_casc_config_path }}'.
+      Ensure that the configuration is on the instance before calling this role."
+  when: not jenkins_casc_config_path_result.stat.exists
+
+- name: "configure : configure jcasc plugin and apply configuration."
+  jenkins_script:
+    script: "{{ lookup('file', 'files/groovy/jcasc/configure.groovy') }}"
+    user: "{{ jenkins_casc_admin_username }}"
+    password: "{{ jenkins_casc_admin_password }}"
+    url: "{{ jenkins_casc_jenkins_base_url }}"
+    timeout: "{{ jenkins_casc_script_timeout }}"
+    args:
+      jcasc_path: "{{ jenkins_casc_config_path }}"
+  register: _jenkins_casc_plugin_configure_result
+
+- name: "configure : set _jenkins_casc_plugin_configure_result fact."
+  ansible.builtin.set_fact:
+    _jenkins_casc_plugin_configure_result:
+      "{{ (_jenkins_casc_plugin_configure_result.output | regex_replace('\\s*Result:\\s*(.*)\\n*$', '\\1') | from_json) }}"
+
+- name: "configure : fail when configuration throws exception."
+  ansible.builtin.fail:
+    msg:
+      - Exception thrown during applying of configuration, check your configuration!
+      - "{{ _jenkins_casc_plugin_configure_result.msg }}"
+  when: _jenkins_casc_plugin_configure_result.failed

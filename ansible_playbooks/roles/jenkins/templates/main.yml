@@ -1,0 +1,10 @@
+- name: Create initialization scripts directory
+  file: path={{ jenkins.home }}/init.groovy.d
+        state=directory
+        owner=jenkins
+        group=jenkins
+        mode=0775
+
+- name: Add initialization script to setup basic security
+  template: src=security.groovy.j2
+            dest={{ jenkins.home }}/init.groovy.d/security.groovy
